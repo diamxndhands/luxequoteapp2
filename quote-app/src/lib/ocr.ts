@@ -90,7 +90,12 @@ const SINGLE_RE = new RegExp(FEET_INCHES)
 // contractor's own plans) — so both orders are matched; the underlying scale is
 // identical either way, only which side comes first differs.
 const PAPER_INCH_SIDE = String.raw`(?:(\d{1,2})\s*\/\s*(\d{1,2})|(\d{1,2}(?:\.\d+)?))\s*${INCH_MARK}?`
-const REAL_FEET_SIDE = String.raw`(\d{1,3}(?:\.\d+)?)\s*${FOOT_MARK}\s*-?\s*(\d{1,2})?\s*${INCH_MARK}?`
+// The real-world side of a scale note is shaped exactly like any other dimension label
+// (a wall length, a room width) — reuse FEET_INCHES rather than a hand-rolled copy that
+// requires an actual foot mark. A first version of this did exactly that, and would have
+// silently missed a scale note on almost every real scan for the same reason a stricter
+// FEET_INCHES once did: OCR drops the foot mark far more often than not.
+const REAL_FEET_SIDE = FEET_INCHES
 const SCALE_INCH_EQ_FEET_RE = new RegExp(`${PAPER_INCH_SIDE}\\s*=\\s*${REAL_FEET_SIDE}`)
 const SCALE_FEET_EQ_INCH_RE = new RegExp(`${REAL_FEET_SIDE}\\s*=\\s*${PAPER_INCH_SIDE}`)
 // A bare ratio (1:50, 1:100 — common on metric-drafted sets) only counts next to the
