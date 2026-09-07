@@ -16,10 +16,9 @@ import { Room, TaggedService } from './types/project'
 import { MaterialsSuppliedBy, Service } from './types/service'
 import './styles.css'
 
-// The wizard shell: persistent stepper, running summary sidebar, autosave. Upload and
-// Rooms are fully wired (the canvas/OCR mechanics ported in the last step); Services,
-// Pricing, and Quote are placeholders per the spec's own guidance not to polish a step
-// before what's inside it is real — see each step component for what's still missing.
+// The wizard shell: persistent stepper, running summary sidebar, autosave. Upload,
+// Rooms, Services, and Pricing are fully wired; Quote is still a placeholder — see
+// QuoteStep for what's left.
 export default function App() {
   const [project, setProject] = useState(() => loadProject() ?? newProject())
   const [catalog, setCatalog] = useState<Service[]>(() => loadCatalog())
@@ -147,6 +146,36 @@ export default function App() {
     setProject(p => ({ ...p, project_line_items: p.project_line_items.filter(t => t.id !== taggedServiceId), updated_at: Date.now() }))
   }
 
+  // Pricing review's inline edits patch the stored labor/material figures directly and
+  // recompute the total from them — quantity and the rate that originally drove the
+  // number stay untouched as a record of where it came from, same reasoning as
+  // TaggedService's rate_used fields never changing after the fact.
+  function applyPricingPatch(t: TaggedService, patch: { labor?: number; material?: number }): TaggedService {
+    const labor = patch.labor ?? t.computed_labor_price
+    const material = patch.material ?? t.computed_material_price
+    return { ...t, computed_labor_price: labor, computed_material_price: material, computed_total: labor + material }
+  }
+
+  function updateRoomServicePricing(roomId: string, taggedServiceId: string, patch: { labor?: number; material?: number }) {
+    setProject(p => ({
+      ...p,
+      rooms: p.rooms.map(r =>
+        r.id === roomId
+          ? { ...r, tagged_services: r.tagged_services.map(t => (t.id === taggedServiceId ? applyPricingPatch(t, patch) : t)) }
+          : r
+      ),
+      updated_at: Date.now()
+    }))
+  }
+
+  function updateProjectServicePricing(taggedServiceId: string, patch: { labor?: number; material?: number }) {
+    setProject(p => ({
+      ...p,
+      project_line_items: p.project_line_items.map(t => (t.id === taggedServiceId ? applyPricingPatch(t, patch) : t)),
+      updated_at: Date.now()
+    }))
+  }
+
   // "Next" unlocks once the minimum for that step is met; going backward is always
   // allowed. Pricing has no real interaction to gate on yet beyond the materials
   // toggle, so it's left open rather than trapping the wizard on an unbuildable
@@ -252,7 +281,15 @@ export default function App() {
               onUpdateCatalog={setCatalog}
             />
           )}
-          {step === 'pricing' && <PricingStep materialsSuppliedBy={project.materials_supplied_by} onChange={setMaterialsSuppliedBy} />}
+          {step === 'pricing' && (
+            <PricingStep
+              project={project}
+              catalog={catalog}
+              onChangeMaterialsSuppliedBy={setMaterialsSuppliedBy}
+              onUpdateRoomServicePricing={updateRoomServicePricing}
+              onUpdateProjectServicePricing={updateProjectServicePricing}
+            />
+          )}
           {step === 'quote' && <QuoteStep />}
         </div>
 

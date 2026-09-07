@@ -107,6 +107,28 @@ export function recordModifierRate(modifier: ServiceModifier, field: 'labor' | '
   return field === 'labor' ? { ...modifier, labor_delta: rate } : { ...modifier, material_delta: rate }
 }
 
+// Physical-plausibility bounds, not a learned "typical for this job" baseline — there
+// isn't enough quote history on file yet to know what's typical (the audit flagged this
+// explicitly: a handful more historical quotes are expected, and this should be
+// revisited once they're in). What this catches is cruder but still useful: a linear-ft
+// run shorter than a doorway or longer than almost any single room, a traced area
+// smaller than a closet or bigger than a great room, an item count nobody would tag by
+// hand. Good enough to be worth a second look; not a claim about the client's business.
+const PLAUSIBLE_RANGES: Partial<Record<Service['unit_type'], [number, number]>> = {
+  linear_ft: [2, 150],
+  sqft: [4, 600],
+  per_item: [1, 20]
+}
+
+function detectAnomaly(unitType: Service['unit_type'], quantity: number): string | undefined {
+  const range = PLAUSIBLE_RANGES[unitType]
+  if (!range) return undefined
+  const [min, max] = range
+  if (quantity < min) return `${quantity} seems short for a single run — worth a second look`
+  if (quantity > max) return `${quantity} seems long for a single room — worth a second look`
+  return undefined
+}
+
 // Turns a priced catalog service into the TaggedService that actually gets stored on a
 // Room or a Project — the one place this happens, so the tagging UI's "quick add" path
 // (no missing rates, no modifiers to configure) and its config-panel path (rates just
@@ -132,7 +154,8 @@ export function tagService(
     material_rate_used: pricesMaterial ? service.base_material_rate ?? 0 : null,
     computed_labor_price: result.labor,
     computed_material_price: result.material,
-    computed_total: result.total
+    computed_total: result.total,
+    anomaly_flag: detectAnomaly(service.unit_type, quantity)
   }
 }
 
@@ -150,6 +173,7 @@ export function tagAdHoc(item: AdHocItem, quantity: number, materialsSuppliedBy:
     material_rate_used: materialsSuppliedBy === 'contractor' ? item.material_rate : null,
     computed_labor_price: result.labor,
     computed_material_price: result.material,
-    computed_total: result.total
+    computed_total: result.total,
+    anomaly_flag: detectAnomaly(item.unit_type, quantity)
   }
 }
