@@ -7,6 +7,15 @@ export type ServiceCategory = 'Consultations' | 'Install' | 'CNC' | 'Supply' | '
 
 export type UnitType = 'linear_ft' | 'sqft' | 'per_item' | 'flat'
 
+// How the tagging canvas captures this service's quantity, independent of unit_type
+// even though the two usually line up (linear_ft -> line, sqft -> polygon). Kept as its
+// own field rather than derived because 'span' and 'point' are both 'per_item' but need
+// different canvas behavior (a door/window's opening width is captured by clicking both
+// edges; a plain count like a mirror is one click) — a unit_type alone can't tell those
+// apart. 'none' is for flat/project-level services with nothing to trace at all (an
+// on-site assessment, a room's flat "bathroom hardware install").
+export type DrawMode = 'point' | 'span' | 'line' | 'polygon' | 'none'
+
 // A rate that has never been entered is `undefined`, not 0 — 0 is a real (if unusual)
 // price, and collapsing "no data yet" into it would let an untagged service silently
 // price at zero instead of prompting. See lib/pricing.ts for the first-use flow this
@@ -28,6 +37,7 @@ export interface Service {
   category: ServiceCategory
   name: string
   unit_type: UnitType
+  draw_mode: DrawMode
   // Consultations and Refine are project-level (a flat site-visit fee, a
   // discovered-on-site correction) — they never attach to a room, so the tagging UI
   // shouldn't offer them from a room's picker at all. Everything else is room-scoped.

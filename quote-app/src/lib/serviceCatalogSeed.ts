@@ -23,6 +23,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Consultations',
     name: 'On-site assessment',
     unit_type: 'flat',
+    draw_mode: 'none',
     room_scoped: false,
     material_applicable: false,
     base_labor_rate: undefined, // no flat/site-visit fee appears in the one historical quote on file
@@ -31,11 +32,14 @@ export const SERVICE_CATALOG_SEED: Service[] = [
   },
 
   // ---- Install: doors ----
+  // draw_mode 'span' for every door below: the canvas captures a door's opening width by
+  // clicking both edges, same as the prototype's door/window handling.
   {
     id: 'svc-door-standard-swing',
     category: 'Install',
     name: 'Standard swing door retrofit (1/4" reveal)',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 650,
@@ -54,6 +58,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     // are actually distinct scopes of work before merging or keeping separate.
     name: 'Interior-only 1/4" reveal',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 650,
@@ -67,6 +72,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Double pivot door set',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 1800,
@@ -80,6 +86,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Master pivot entry',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 1500,
@@ -93,6 +100,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Pocket door (jamb mod + shadow reveal)',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 750,
@@ -106,6 +114,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Exterior pivot (closet)',
     unit_type: 'per_item',
+    draw_mode: 'span',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 1200,
@@ -121,6 +130,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Standard surface-mount baseboard',
     unit_type: 'linear_ft',
+    draw_mode: 'line',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 12,
@@ -134,6 +144,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Recessed baseboard',
     unit_type: 'linear_ft',
+    draw_mode: 'line',
     room_scoped: true,
     material_applicable: true,
     // No standalone rate for a plain recessed baseboard appears in the historical
@@ -169,6 +180,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     // as real, separately billable line items.
     name: 'Recessed baseboard, scribed to floor',
     unit_type: 'linear_ft',
+    draw_mode: 'line',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 45,
@@ -184,6 +196,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Feature wall (accent wall)',
     unit_type: 'sqft',
+    draw_mode: 'polygon',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: undefined, // not in the one historical quote on file
@@ -202,6 +215,8 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Bathroom hardware install',
     unit_type: 'flat',
+    // Billed per room, not traced — tagging this just means "this room gets it."
+    draw_mode: 'none',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 150,
@@ -225,6 +240,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     category: 'Install',
     name: 'Stair stringer Z-channel',
     unit_type: 'linear_ft',
+    draw_mode: 'line',
     room_scoped: true,
     material_applicable: true,
     base_labor_rate: 45,
@@ -243,6 +259,7 @@ export const SERVICE_CATALOG_SEED: Service[] = [
     // to how these actually get billed, but confirm rather than assume.
     name: 'Deficiency correction (dutchman patch / hardware fix)',
     unit_type: 'flat',
+    draw_mode: 'none',
     room_scoped: false,
     material_applicable: true,
     base_labor_rate: undefined,

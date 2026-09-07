@@ -20,6 +20,13 @@ export interface QuoteLineItem {
 export interface Quote {
   id: string
   project_id: string
+  // Human-facing document number (Q-2026-001) — absent until the quote is actually
+  // issued, since assigning it on every draft edit would burn numbers on quotes never
+  // sent.
+  number?: string
+  title?: string
+  client_name?: string
+  client_address?: string
   // Snapshot of the project setting that decided whether material_amount columns were
   // even populated for this quote — see Service.material_applicable.
   materials_supplied_by: MaterialsSuppliedBy
@@ -27,6 +34,8 @@ export interface Quote {
   subtotal: number
   gst: number
   total: number
+  notes?: string
+  valid_until?: number
   generated_pdf_url?: string
   status: 'draft' | 'sent' | 'won' | 'lost'
   created_at: number

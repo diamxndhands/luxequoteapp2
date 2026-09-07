@@ -1,4 +1,4 @@
-import { MaterialsSuppliedBy } from './service'
+import { MaterialsSuppliedBy, UnitType } from './service'
 
 export interface ScaleCalibration {
   pixelLength: number
@@ -18,9 +18,25 @@ export interface SelectedModifier {
 // One service, tagged once, priced. Whether it's sitting in a Room's list or a
 // Project's project_line_items list, the shape is identical — a project-level
 // Consultations line and a room's baseboard run are both just a TaggedService.
+// A one-off item with no catalog entry — a bespoke ask the rate table has never seen
+// and never will again. The old prototype supported this (CustomItemForm) and real jobs
+// need it; forcing every line through the catalog would make the tagging flow a wall
+// between the user and something they need to quote right now. When present, this
+// entirely bypasses lib/pricing.ts's rate lookup — the numbers here are what the user
+// typed, not a rate table entry.
+export interface AdHocItem {
+  name: string
+  unit_type: UnitType
+  labor_rate: number
+  material_rate: number | null
+}
+
 export interface TaggedService {
   id: string
-  service_id: string
+  // Exactly one of service_id or ad_hoc is set, never both — enforced by however this
+  // gets constructed (the tagging UI), not by the type itself.
+  service_id?: string
+  ad_hoc?: AdHocItem
   quantity: number
   // 'auto' when geometry produced the number (perimeter/area/opening count off the
   // plan); 'manual' when typed in. Shown in the pricing review so an auto quantity that

@@ -1,5 +1,5 @@
 import { MaterialsSuppliedBy, Rate, Service, ServiceModifier } from '../types/service'
-import { SelectedModifier } from '../types/project'
+import { AdHocItem, SelectedModifier } from '../types/project'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -66,6 +66,16 @@ export function priceService(
     total: round2((laborTotal + materialTotal) * quantity),
     missingRates
   }
+}
+
+// An ad-hoc item carries its own rate outright — never a lookup, never a missing-rate
+// prompt, since there's no catalog entry behind it to prompt against. Materials still
+// respect the project's supplied-by toggle: a client-supplies-materials job doesn't
+// charge for an ad-hoc item's material rate any more than it would a catalog one.
+export function priceAdHoc(item: AdHocItem, quantity: number, materialsSuppliedBy: MaterialsSuppliedBy): PricingResult {
+  const labor = item.labor_rate * quantity
+  const material = materialsSuppliedBy === 'contractor' ? (item.material_rate ?? 0) * quantity : 0
+  return { labor: round2(labor), material: round2(material), total: round2(labor + material), missingRates: [] }
 }
 
 // Turns a catalog modifier into a line-item-ready SelectedModifier, or null when either
