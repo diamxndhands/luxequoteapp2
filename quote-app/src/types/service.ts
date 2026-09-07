@@ -7,6 +7,13 @@ export type ServiceCategory = 'Consultations' | 'Install' | 'CNC' | 'Supply' | '
 
 export type UnitType = 'linear_ft' | 'sqft' | 'per_item' | 'flat'
 
+export const UNIT_LABEL: Record<UnitType, string> = {
+  linear_ft: 'linear ft',
+  sqft: 'sq ft',
+  per_item: 'item',
+  flat: 'flat'
+}
+
 // How the tagging canvas captures this service's quantity, independent of unit_type
 // even though the two usually line up (linear_ft -> line, sqft -> polygon). Kept as its
 // own field rather than derived because 'span' and 'point' are both 'per_item' but need

@@ -11,8 +11,9 @@ import QuoteStep from './components/wizard/steps/QuoteStep'
 import { DetectedDimension, DetectedRoom, ScheduleEntry, scanPlan } from './lib/ocr'
 import { getRoomColor, getNextRoomColor } from './lib/roomColors'
 import { fileToDataUrl, loadProject, newProject, saveProject } from './lib/projectStore'
-import { Room } from './types/project'
-import { MaterialsSuppliedBy } from './types/service'
+import { loadCatalog, saveCatalog } from './lib/catalogStore'
+import { Room, TaggedService } from './types/project'
+import { MaterialsSuppliedBy, Service } from './types/service'
 import './styles.css'
 
 // The wizard shell: persistent stepper, running summary sidebar, autosave. Upload and
@@ -21,6 +22,7 @@ import './styles.css'
 // before what's inside it is real — see each step component for what's still missing.
 export default function App() {
   const [project, setProject] = useState(() => loadProject() ?? newProject())
+  const [catalog, setCatalog] = useState<Service[]>(() => loadCatalog())
   const [step, setStep] = useState<WizardStep>('upload')
   const [furthest, setFurthest] = useState<WizardStep>('upload')
   const [mode, setMode] = useState<CanvasMode>('none')
@@ -35,6 +37,12 @@ export default function App() {
   useEffect(() => {
     saveProject(project)
   }, [project])
+
+  // Same for the rate table: every first-use rate entered mid-tagging is on file for
+  // every quote after this one, per the spec — not just this project's.
+  useEffect(() => {
+    saveCatalog(catalog)
+  }, [catalog])
 
   // Re-scan a restored plan on load, same as the prototype — OCR results aren't
   // themselves persisted (cheap to recompute, avoids re-associating stale bounding
@@ -111,14 +119,43 @@ export default function App() {
     setProject(p => ({ ...p, materials_supplied_by: value, updated_at: Date.now() }))
   }
 
+  // `build` runs once per target room so each room's tagged service is priced against
+  // its own quantity (its own perimeter/area, or the config panel's manual override for
+  // whichever room was the primary target) — see ServicesStep for how bulk apply uses
+  // this to avoid billing a small room for a big one's footage.
+  function tagRooms(roomIds: string[], build: (room: Room) => TaggedService) {
+    setProject(p => ({
+      ...p,
+      rooms: p.rooms.map(r => (roomIds.includes(r.id) ? { ...r, tagged_services: [...r.tagged_services, build(r)] } : r)),
+      updated_at: Date.now()
+    }))
+  }
+
+  function tagProject(taggedService: TaggedService) {
+    setProject(p => ({ ...p, project_line_items: [...p.project_line_items, taggedService], updated_at: Date.now() }))
+  }
+
+  function removeRoomService(roomId: string, taggedServiceId: string) {
+    setProject(p => ({
+      ...p,
+      rooms: p.rooms.map(r => (r.id === roomId ? { ...r, tagged_services: r.tagged_services.filter(t => t.id !== taggedServiceId) } : r)),
+      updated_at: Date.now()
+    }))
+  }
+
+  function removeProjectService(taggedServiceId: string) {
+    setProject(p => ({ ...p, project_line_items: p.project_line_items.filter(t => t.id !== taggedServiceId), updated_at: Date.now() }))
+  }
+
   // "Next" unlocks once the minimum for that step is met; going backward is always
-  // allowed. Services/Pricing have no real interaction to gate on yet (see their
-  // components) so they're left open rather than trapping the wizard on an
-  // unbuildable requirement.
+  // allowed. Pricing has no real interaction to gate on yet beyond the materials
+  // toggle, so it's left open rather than trapping the wizard on an unbuildable
+  // requirement.
+  const totalTagged = project.rooms.reduce((sum, r) => sum + r.tagged_services.length, 0) + project.project_line_items.length
   const canAdvance: Record<WizardStep, boolean> = {
     upload: !!project.floor_plan_image_url,
     rooms: project.rooms.length > 0,
-    services: true,
+    services: totalTagged > 0,
     pricing: true,
     quote: true
   }
@@ -204,7 +241,17 @@ export default function App() {
             />
           )}
 
-          {step === 'services' && <ServicesStep rooms={project.rooms} />}
+          {step === 'services' && (
+            <ServicesStep
+              project={project}
+              catalog={catalog}
+              onTagRooms={tagRooms}
+              onTagProject={tagProject}
+              onRemoveRoomService={removeRoomService}
+              onRemoveProjectService={removeProjectService}
+              onUpdateCatalog={setCatalog}
+            />
+          )}
           {step === 'pricing' && <PricingStep materialsSuppliedBy={project.materials_supplied_by} onChange={setMaterialsSuppliedBy} />}
           {step === 'quote' && <QuoteStep />}
         </div>

@@ -81,6 +81,41 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", He
 .toggleGroup { display: flex; gap: 6px; margin: 8px 0; }
 .toggleGroup button.active { background: #242320; color: #fff; border-color: #242320; }
 
+/* ---------- services step: room rail + category-organized picker ---------- */
+.servicesStep { position: absolute; inset: 0; display: flex; background: #f6f5f2; }
+.roomRail { width: 180px; flex-shrink: 0; background: #fff; border-right: 1px solid var(--border); overflow-y: auto; padding: 8px; }
+.roomRailItem { display: flex; align-items: center; justify-content: space-between; border-radius: 8px; margin-bottom: 2px; }
+.roomRailItem.active { background: #eef0ec; }
+.roomRailLabel, .roomRailItem > button { flex: 1; display: flex; justify-content: space-between; text-align: left; border: none; background: none; padding: 8px; font-size: 13px; font-family: inherit; cursor: pointer; border-radius: 8px; }
+.roomRailItem.active > button, .roomRailItem.active .roomRailLabel { font-weight: 600; }
+.roomRailDivider { height: 1px; background: var(--border); margin: 6px 4px; }
+.bulkCheck { padding: 0 8px; display: flex; align-items: center; }
+.servicesMain { flex: 1; min-width: 0; overflow-y: auto; padding: 16px; }
+.bulkNotice { font-size: 12px; color: #7a6420; background: #fff8e6; border: 1px solid #e8dcb0; border-radius: 8px; padding: 8px 10px; margin-bottom: 10px; }
+.copyLastRoomBtn { display: block; width: 100%; text-align: left; margin-bottom: 12px; }
+.taggedList { margin-bottom: 16px; }
+.categoryGroup { margin-bottom: 16px; }
+.categoryHeader { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; color: #6b6a63; margin-bottom: 6px; }
+.categoryItems { display: flex; flex-wrap: wrap; gap: 6px; }
+.serviceChip { position: relative; font-size: 12px; padding: 7px 12px; border-radius: 16px; }
+.chipBadge { display: block; font-size: 9px; color: #b8734a; margin-top: 2px; }
+.customItemBtn { font-size: 12px; color: var(--text-muted); background: none; border: 1px dashed var(--border); }
+
+/* ---------- config panels: modifier/rate/quantity, and the custom-item form ---------- */
+.pickerOverlay { position: absolute; inset: 0; z-index: 20; background: rgba(28,27,25,.45); display: flex; align-items: center; justify-content: center; padding: 20px; }
+.configPanel { background: #fff; border-radius: 12px; width: min(420px, 100%); max-height: 90%; overflow-y: auto; padding: 18px; box-shadow: 0 8px 32px rgba(0,0,0,.25); }
+.configPanelHead { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 14px; }
+.configPanelHead h2 { margin: 2px 0 0; font-size: 16px; }
+.configField { margin-bottom: 14px; }
+.configField input[type="number"], .configField input[type="text"] { width: 100%; font-size: 13px; padding: 7px 9px; border-radius: 6px; border: 1px solid #c7c4b8; font-family: inherit; }
+.ratePrompt { background: #fff8e6; border: 1px solid #e8dcb0; border-radius: 8px; padding: 10px; margin-bottom: 14px; }
+.ratePrompt.nested { margin: 6px 0 0 24px; }
+.rateRow { display: flex; gap: 6px; margin-top: 4px; }
+.rateRow input { flex: 1; font-size: 13px; padding: 6px 8px; border-radius: 6px; border: 1px solid #c7c4b8; }
+.modifierRow { margin-bottom: 8px; }
+.trimCheck { display: flex; align-items: center; gap: 6px; font-size: 13px; cursor: pointer; }
+.configPanelFoot { display: flex; justify-content: space-between; align-items: center; padding-top: 12px; border-top: 1px solid var(--border); margin-top: 4px; }
+
 /* ---------- sidebar: running summary, visible at every step ---------- */
 .wizardSidebar { width: 240px; flex-shrink: 0; background: #fff; border-left: 1px solid var(--border); padding: 14px; overflow-y: auto; }
 .sidebarSection { margin-bottom: 16px; }

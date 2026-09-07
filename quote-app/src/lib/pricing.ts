@@ -1,5 +1,5 @@
 import { MaterialsSuppliedBy, Rate, Service, ServiceModifier } from '../types/service'
-import { AdHocItem, SelectedModifier } from '../types/project'
+import { AdHocItem, SelectedModifier, TaggedService } from '../types/project'
 
 function round2(n: number): number {
   return Math.round(n * 100) / 100
@@ -105,4 +105,51 @@ export function recordRate(service: Service, field: 'labor' | 'material', rate: 
 
 export function recordModifierRate(modifier: ServiceModifier, field: 'labor' | 'material', rate: number): ServiceModifier {
   return field === 'labor' ? { ...modifier, labor_delta: rate } : { ...modifier, material_delta: rate }
+}
+
+// Turns a priced catalog service into the TaggedService that actually gets stored on a
+// Room or a Project — the one place this happens, so the tagging UI's "quick add" path
+// (no missing rates, no modifiers to configure) and its config-panel path (rates just
+// entered, modifiers just picked) can't drift into computing a line item two different
+// ways. Assumes the caller has already resolved every rate this service and its
+// selected modifiers need — priceService's missingRates is empty going in.
+export function tagService(
+  service: Service,
+  quantity: number,
+  quantitySource: 'auto' | 'manual',
+  selectedModifiers: SelectedModifier[],
+  materialsSuppliedBy: MaterialsSuppliedBy
+): TaggedService {
+  const result = priceService(service, quantity, selectedModifiers, materialsSuppliedBy)
+  const pricesMaterial = service.material_applicable && materialsSuppliedBy === 'contractor'
+  return {
+    id: crypto.randomUUID(),
+    service_id: service.id,
+    quantity,
+    quantity_source: quantitySource,
+    modifiers_selected: selectedModifiers,
+    labor_rate_used: service.base_labor_rate ?? 0,
+    material_rate_used: pricesMaterial ? service.base_material_rate ?? 0 : null,
+    computed_labor_price: result.labor,
+    computed_material_price: result.material,
+    computed_total: result.total
+  }
+}
+
+// Same idea for an ad-hoc item — never has a missing rate to resolve (the user typed it
+// directly), so there's no config-panel/quick-add split to reconcile.
+export function tagAdHoc(item: AdHocItem, quantity: number, materialsSuppliedBy: MaterialsSuppliedBy): TaggedService {
+  const result = priceAdHoc(item, quantity, materialsSuppliedBy)
+  return {
+    id: crypto.randomUUID(),
+    ad_hoc: item,
+    quantity,
+    quantity_source: 'manual',
+    modifiers_selected: [],
+    labor_rate_used: item.labor_rate,
+    material_rate_used: materialsSuppliedBy === 'contractor' ? item.material_rate : null,
+    computed_labor_price: result.labor,
+    computed_material_price: result.material,
+    computed_total: result.total
+  }
 }
