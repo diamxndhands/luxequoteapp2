@@ -39,19 +39,31 @@ export default function RoomsStep({
   rooms,
   onRemoveRoom
 }: Props) {
+  // FloorPlanCanvas's own hint bar (the calibration form, the room-name prompt, the
+  // Undo/Finish/Cancel bar) takes over the same top-left corner as this toolbar and the
+  // OCR banners the moment a draw mode starts — it needs that space to itself (the
+  // calibration form alone has a number input, a unit dropdown, and two buttons), so
+  // everything below stands down while mode !== 'none' rather than fighting it for
+  // space.
+  const idle = mode === 'none'
+
   return (
     <>
-      <div className="uploadStepBar">
-        <button className={mode === 'calibrate' ? 'active' : ''} onClick={onCalibrateClick}>
-          {scale ? `Scale: ${scale.realLength} ${scale.unit}` : 'Calibrate scale'}
-        </button>
-        <button disabled={!scale} className={mode === 'room' ? 'active' : ''} onClick={onTraceRoomClick}>
-          Trace a room
-        </button>
-      </div>
+      {idle && (
+        <div className="uploadStepBar">
+          <button onClick={onCalibrateClick}>{scale ? `Scale: ${scale.realLength} ${scale.unit}` : 'Calibrate scale'}</button>
+          <button disabled={!scale} onClick={onTraceRoomClick}>
+            Trace a room
+          </button>
+        </div>
+      )}
 
-      <DetectedDimensionsBanner status={ocrStatus} dimensions={detectedDimensions} onUse={onUseDimension} />
-      <DetectedRoomsBanner rooms={detectedRooms} onAccept={onAcceptDetectedRooms} onDismiss={onDismissDetectedRooms} />
+      {idle && (
+        <>
+          <DetectedDimensionsBanner status={ocrStatus} dimensions={detectedDimensions} onUse={onUseDimension} />
+          <DetectedRoomsBanner rooms={detectedRooms} onAccept={onAcceptDetectedRooms} onDismiss={onDismissDetectedRooms} />
+        </>
+      )}
 
       {rooms.length > 0 && (
         <div className="roomListPanel">

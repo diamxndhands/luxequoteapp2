@@ -49,8 +49,12 @@ body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", He
 .zoomControls button:hover { background: #f3f2ee; border-radius: 6px; }
 
 /* ---------- OCR banners: transient overlays, not permanent panels ---------- */
-/* Starts below .uploadStepBar (Rooms step's calibrate/trace controls, pinned at
-   top:10) so the two never overlap — they're both visible at once on that step. */
+/* Starts below .uploadStepBar (the Rooms step's calibrate/trace controls, pinned at
+   top:10) — both are shown together whenever no draw mode is active, so they need to
+   stack rather than overlap. FloorPlanCanvas's own hint bar (the calibration form, the
+   room-name prompt) takes this same top-left corner once a draw mode starts, but by
+   then the toolbar and these banners are hidden (see RoomsStep's `idle` check), so
+   there's nothing left to collide with. */
 .ocrBannerWrap { position: absolute; top: 54px; left: 10px; z-index: 6; max-width: calc(100% - 100px); }
 .ocrBannerWrap.schedule { top: 94px; }
 .ocrBannerWrap.rooms { top: 134px; }
