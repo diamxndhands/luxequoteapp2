@@ -13,8 +13,9 @@ interface Props {
   // Takes the resolved raster image, not the raw File — PDF or photo, calibration/
   // tracing/OCR all downstream of this step only ever deal in images, so resolving a
   // PDF page down to one happens here rather than leaking pdfjs into the rest of the
-  // app.
-  onUpload: (imageDataUrl: string) => void
+  // app. pixelsPerPaperInch is only known — and only passed — for a PDF page; a plain
+  // photo has no fixed relationship between its pixels and any real-world paper size.
+  onUpload: (imageDataUrl: string, pixelsPerPaperInch?: number) => void
 }
 
 interface PendingPdf {
@@ -51,7 +52,8 @@ export default function UploadStep({ imageUrl, ocrStatus, onUpload }: Props) {
       const doc = await loadPdf(file)
       if (doc.numPages <= 1) {
         setBusy('rendering')
-        onUpload(await renderPageImage(doc, 1))
+        const rendered = await renderPageImage(doc, 1)
+        onUpload(rendered.dataUrl, rendered.pixelsPerInch)
         setBusy(null)
         return
       }
@@ -82,9 +84,9 @@ export default function UploadStep({ imageUrl, ocrStatus, onUpload }: Props) {
     setBusy('rendering')
     try {
       const { renderPageImage } = await import('../../../lib/pdfToImage')
-      const dataUrl = await renderPageImage(pending.doc, pageNumber)
+      const rendered = await renderPageImage(pending.doc, pageNumber)
       setPending(null)
-      onUpload(dataUrl)
+      onUpload(rendered.dataUrl, rendered.pixelsPerInch)
     } catch (e) {
       console.error('Failed to render PDF page:', e)
       setError('Could not render that page — try a different one.')

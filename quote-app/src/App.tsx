@@ -40,6 +40,10 @@ export default function App() {
   const [detectedDimensions, setDetectedDimensions] = useState<DetectedDimension[]>([])
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([])
   const [detectedRooms, setDetectedRooms] = useState<DetectedRoom[]>([])
+  // Resolved to feet-per-pixel already (unlike the other three, which are the raw OCR
+  // read) — the DPI needed for that conversion is only available right here, at scan
+  // time, alongside project.floor_plan_pixels_per_inch.
+  const [detectedScale, setDetectedScale] = useState<{ ftPerPixel: number; label: string; sourceText: string } | null>(null)
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'scanning' | 'done' | 'error'>('idle')
 
   // Autosave on every change to the project — a jobsite interruption shouldn't lose work.
@@ -61,20 +65,32 @@ export default function App() {
   // themselves persisted (cheap to recompute, avoids re-associating stale bounding
   // boxes with anything).
   useEffect(() => {
-    if (project.floor_plan_image_url) scanForOcr(project.floor_plan_image_url)
+    if (project.floor_plan_image_url) scanForOcr(project.floor_plan_image_url, project.floor_plan_pixels_per_inch)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  function scanForOcr(url: string) {
+  function scanForOcr(url: string, pixelsPerPaperInch?: number) {
     setDetectedDimensions([])
     setScheduleEntries([])
     setDetectedRooms([])
+    setDetectedScale(null)
     setOcrStatus('scanning')
     scanPlan(url)
       .then(result => {
         setDetectedDimensions(result.dimensions)
         setScheduleEntries(result.scheduleEntries)
         setDetectedRooms(result.rooms)
+        // Only resolvable on the PDF path — a photo carries no fixed pixels-per-inch,
+        // so a scale note in one just can't be turned into feet-per-pixel.
+        setDetectedScale(
+          result.scaleNote && pixelsPerPaperInch
+            ? {
+                ftPerPixel: result.scaleNote.realFeetPerPaperInch / pixelsPerPaperInch,
+                label: result.scaleNote.label,
+                sourceText: result.scaleNote.sourceText
+              }
+            : null
+        )
         setOcrStatus('done')
       })
       .catch(() => setOcrStatus('error'))
@@ -82,13 +98,32 @@ export default function App() {
 
   // UploadStep already resolved whatever the user picked (photo or PDF, page chosen if
   // it had more than one) down to a single raster image — nothing downstream of this
-  // needs to know which it came from.
-  function handleUpload(imageDataUrl: string) {
+  // needs to know which it came from, except the scale-note detection above, which is
+  // why pixelsPerPaperInch (PDF-only, undefined for a photo) rides along too.
+  function handleUpload(imageDataUrl: string, pixelsPerPaperInch?: number) {
     // A new plan invalidates everything measured against the old one.
-    setProject(p => ({ ...p, floor_plan_image_url: imageDataUrl, scale: undefined, rooms: [], updated_at: Date.now() }))
+    setProject(p => ({
+      ...p,
+      floor_plan_image_url: imageDataUrl,
+      floor_plan_pixels_per_inch: pixelsPerPaperInch,
+      scale: undefined,
+      rooms: [],
+      updated_at: Date.now()
+    }))
     setMode('none')
     setCalibrationHint(null)
-    scanForOcr(imageDataUrl)
+    scanForOcr(imageDataUrl, pixelsPerPaperInch)
+  }
+
+  // Synthesizes an equivalent {pixelLength, realLength} pair rather than adding a
+  // separate "scale was OCR'd" representation to ScaleCalibration — pixelLength: 1,
+  // realLength: ftPerPixel reproduces the exact same feet-per-pixel through the normal
+  // realFeetPerPixel() math, so nothing downstream needs to know this scale didn't come
+  // from a drawn line.
+  function applyDetectedScale() {
+    if (!detectedScale) return
+    setProject(p => ({ ...p, scale: { pixelLength: 1, realLength: detectedScale.ftPerPixel, unit: 'ft' }, updated_at: Date.now() }))
+    setDetectedScale(null)
   }
 
   function updateRooms(fn: (rooms: Room[]) => Room[]) {
@@ -295,6 +330,9 @@ export default function App() {
               }}
               onTraceRoomClick={() => setMode('room')}
               ocrStatus={ocrStatus}
+              detectedScale={detectedScale}
+              onApplyDetectedScale={applyDetectedScale}
+              onDismissDetectedScale={() => setDetectedScale(null)}
               detectedDimensions={detectedDimensions}
               onUseDimension={d => {
                 setCalibrationHint(d.feet)

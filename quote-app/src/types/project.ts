@@ -83,6 +83,10 @@ export interface Project {
   address?: string
   materials_supplied_by: MaterialsSuppliedBy
   floor_plan_image_url?: string
+  // Set only when the plan came in as a PDF (see lib/pdfToImage.ts) — carries the exact
+  // pixels-per-paper-inch the current image was rendered at, so a printed scale note can
+  // still be turned into feet-per-pixel after a reload, not just right after upload.
+  floor_plan_pixels_per_inch?: number
   scale?: ScaleCalibration
   rooms: Room[]
   // Consultations, Refine, and any other non-room-scoped service tagged at the project

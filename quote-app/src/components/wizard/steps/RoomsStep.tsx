@@ -1,5 +1,6 @@
 import DetectedDimensionsBanner from '../../DetectedDimensionsBanner'
 import DetectedRoomsBanner from '../../DetectedRoomsBanner'
+import DetectedScaleBanner from '../../DetectedScaleBanner'
 import { DetectedDimension, DetectedRoom } from '../../../lib/ocr'
 import { Room } from '../../../types/project'
 import { ScaleCalibration } from '../../../types/project'
@@ -11,6 +12,9 @@ interface Props {
   onCalibrateClick: () => void
   onTraceRoomClick: () => void
   ocrStatus: 'idle' | 'scanning' | 'done' | 'error'
+  detectedScale: { ftPerPixel: number; label: string; sourceText: string } | null
+  onApplyDetectedScale: () => void
+  onDismissDetectedScale: () => void
   detectedDimensions: DetectedDimension[]
   onUseDimension: (d: DetectedDimension) => void
   detectedRooms: DetectedRoom[]
@@ -31,6 +35,9 @@ export default function RoomsStep({
   onCalibrateClick,
   onTraceRoomClick,
   ocrStatus,
+  detectedScale,
+  onApplyDetectedScale,
+  onDismissDetectedScale,
   detectedDimensions,
   onUseDimension,
   detectedRooms,
@@ -51,7 +58,13 @@ export default function RoomsStep({
     <>
       {idle && (
         <div className="uploadStepBar">
-          <button onClick={onCalibrateClick}>{scale ? `Scale: ${scale.realLength} ${scale.unit}` : 'Calibrate scale'}</button>
+          <button onClick={onCalibrateClick}>
+            {/* Rounded for display only — the stored value keeps full precision, which
+                matters once it came from a scale note instead of a typed-in number
+                (0.03125555555555556 is exact; a raw manual entry like 10 was already
+                clean and toPrecision leaves it that way too). */}
+            {scale ? `Scale: ${Number(scale.realLength.toPrecision(4))} ${scale.unit}` : 'Calibrate scale'}
+          </button>
           <button disabled={!scale} onClick={onTraceRoomClick}>
             Trace a room
           </button>
@@ -60,6 +73,7 @@ export default function RoomsStep({
 
       {idle && (
         <>
+          <DetectedScaleBanner scale={detectedScale} onApply={onApplyDetectedScale} onDismiss={onDismissDetectedScale} />
           <DetectedDimensionsBanner status={ocrStatus} dimensions={detectedDimensions} onUse={onUseDimension} />
           <DetectedRoomsBanner rooms={detectedRooms} onAccept={onAcceptDetectedRooms} onDismiss={onDismissDetectedRooms} />
         </>

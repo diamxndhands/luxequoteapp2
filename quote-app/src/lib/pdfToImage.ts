@@ -21,7 +21,18 @@ export async function loadPdf(file: File): Promise<PDFDocumentProxy> {
   return getDocument({ data: buffer }).promise
 }
 
-async function renderPage(pdf: PDFDocumentProxy, pageNumber: number, targetLongEdge: number): Promise<string> {
+export interface RenderedPage {
+  dataUrl: string
+  // Pixels per *paper* inch this render used — derivable because a PDF page declares
+  // its real physical size (1 point = 1/72 inch, per the PDF spec) and this is the only
+  // place that knows the scale factor applied on top of that. Lets a printed scale note
+  // ("1/4" = 1'-0"") on the plan be turned into feet-per-pixel with no calibration line
+  // at all — see lib/ocr.ts's scale-note detection and App.tsx's use of it. Meaningless
+  // for a photographed plan, which is why this only exists on the PDF path.
+  pixelsPerInch: number
+}
+
+async function renderPage(pdf: PDFDocumentProxy, pageNumber: number, targetLongEdge: number): Promise<RenderedPage> {
   const page = await pdf.getPage(pageNumber)
   const base = page.getViewport({ scale: 1 })
   const scale = Math.min(MAX_SCALE, targetLongEdge / Math.max(base.width, base.height))
@@ -37,16 +48,16 @@ async function renderPage(pdf: PDFDocumentProxy, pageNumber: number, targetLongE
   ctx.fillStyle = '#ffffff'
   ctx.fillRect(0, 0, canvas.width, canvas.height)
   await page.render({ canvasContext: ctx, viewport }).promise
-  return canvas.toDataURL('image/png')
+  return { dataUrl: canvas.toDataURL('image/png'), pixelsPerInch: scale * 72 }
 }
 
 // Full resolution, for the page that's actually going to be traced/measured/OCR'd.
-export function renderPageImage(pdf: PDFDocumentProxy, pageNumber: number): Promise<string> {
+export function renderPageImage(pdf: PDFDocumentProxy, pageNumber: number): Promise<RenderedPage> {
   return renderPage(pdf, pageNumber, TARGET_LONG_EDGE)
 }
 
 // Small and fast, for a multi-page picker — nobody needs full resolution to recognize
-// which page has the floor plan on it.
-export function renderPageThumbnail(pdf: PDFDocumentProxy, pageNumber: number): Promise<string> {
-  return renderPage(pdf, pageNumber, 300)
+// which page has the floor plan on it, and no one needs its DPI either.
+export async function renderPageThumbnail(pdf: PDFDocumentProxy, pageNumber: number): Promise<string> {
+  return (await renderPage(pdf, pageNumber, 300)).dataUrl
 }

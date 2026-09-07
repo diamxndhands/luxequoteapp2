@@ -47,6 +47,16 @@ export interface ScheduleEntry {
   sourceText: string
 }
 
+// The plan's own printed scale note, parsed but not yet turned into feet-per-pixel —
+// that last step needs to know how many pixels the render put per paper inch, which
+// this module has no reason to know (it works the same on a PDF render or a plain
+// photo). The caller — App.tsx, which does know, only for PDFs — does that conversion.
+export interface DetectedScale {
+  realFeetPerPaperInch: number
+  label: string // the matched text itself, e.g. `1'=1/8"` — shown verbatim, not reworded
+  sourceText: string
+}
+
 // Matches 12'-6", 12' 6", 12'6", bare 12', and — the case that matters most in
 // practice — 12-6", because OCR drops the foot mark on printed plans far more often
 // than not. Every real scan during development came back as "12-6"" or "14-0"", so a
@@ -70,6 +80,40 @@ const INCH_MARK = String.raw`["”″]`
 const FEET_INCHES = String.raw`(\d{1,3}(?:\.\d+)?)\s*(?:${FOOT_MARK}(?!${FOOT_MARK})\s*-?\s*|-\s*|\.(?=\s*\d{1,2}\s*${INCH_MARK}))\s*((?:0?\d|1[01])(?:\.\d+)?)?\s*${INCH_MARK}?`
 const PAIR_RE = new RegExp(`${FEET_INCHES}\\s*[xX×]\\s*${FEET_INCHES}`)
 const SINGLE_RE = new RegExp(FEET_INCHES)
+
+// Printed scale notes ("SCALE: 1/4" = 1'-0"", or a schedule row that just reads
+// "1'=1/8"") give the plan's real feet-per-paper-inch directly — no calibration line
+// needed at all, provided the caller also knows how many pixels the render put per
+// paper inch (only true for a PDF page, where the physical page size is exact; see
+// lib/pdfToImage.ts). Drafters write the ratio both ways round — paper-inches first
+// ("1/4" = 1'-0"", the more common convention) or feet first ("1' = 1/8"", seen on this
+// contractor's own plans) — so both orders are matched; the underlying scale is
+// identical either way, only which side comes first differs.
+const PAPER_INCH_SIDE = String.raw`(?:(\d{1,2})\s*\/\s*(\d{1,2})|(\d{1,2}(?:\.\d+)?))\s*${INCH_MARK}?`
+const REAL_FEET_SIDE = String.raw`(\d{1,3}(?:\.\d+)?)\s*${FOOT_MARK}\s*-?\s*(\d{1,2})?\s*${INCH_MARK}?`
+const SCALE_INCH_EQ_FEET_RE = new RegExp(`${PAPER_INCH_SIDE}\\s*=\\s*${REAL_FEET_SIDE}`)
+const SCALE_FEET_EQ_INCH_RE = new RegExp(`${REAL_FEET_SIDE}\\s*=\\s*${PAPER_INCH_SIDE}`)
+// A bare ratio (1:50, 1:100 — common on metric-drafted sets) only counts next to the
+// word "scale": on its own, "1:50" reads as easily as a time or an unrelated ratio
+// printed somewhere else on the sheet.
+const SCALE_RATIO_RE = /\b1\s*:\s*(\d{2,4})\b/
+
+function paperInches(num?: string, den?: string, whole?: string): number | undefined {
+  if (num !== undefined && den !== undefined) {
+    const n = Number(num)
+    const d = Number(den)
+    return d > 0 ? n / d : undefined
+  }
+  return whole !== undefined ? Number(whole) : undefined
+}
+
+// Real architectural scales run from tiny site plans (1"=100', i.e. 100 real feet per
+// paper inch) to large detail blowups (3"=1', i.e. 1/3 real feet per paper inch).
+// Outside that range the match is almost certainly something else on the sheet that
+// happened to contain an "=" between two measurement-shaped tokens.
+function isPlausibleScale(realFeetPerPaperInch: number): boolean {
+  return realFeetPerPaperInch >= 0.1 && realFeetPerPaperInch <= 150
+}
 
 // Schedule rows: an ID prefix (D1, DR2, W1, WIN3...) at the start of the line, or a
 // bare mention of "door"/"window" when there's no ID. Sizes there are as often given
@@ -197,6 +241,41 @@ function parseScheduleLine(text: string, nextId: () => string): ScheduleEntry | 
   }
 }
 
+function parseScaleLine(text: string): { realFeetPerPaperInch: number; label: string } | null {
+  let m = text.match(SCALE_INCH_EQ_FEET_RE)
+  if (m) {
+    const paperIn = paperInches(m[1], m[2], m[3])
+    const feet = m[4] !== undefined ? Number(m[4]) + (m[5] ? Number(m[5]) / 12 : 0) : undefined
+    if (paperIn && feet) {
+      const scale = feet / paperIn
+      if (isPlausibleScale(scale)) return { realFeetPerPaperInch: scale, label: m[0].trim() }
+    }
+  }
+
+  m = text.match(SCALE_FEET_EQ_INCH_RE)
+  if (m) {
+    const feet = Number(m[1]) + (m[2] ? Number(m[2]) / 12 : 0)
+    const paperIn = paperInches(m[3], m[4], m[5])
+    if (paperIn && feet) {
+      const scale = feet / paperIn
+      if (isPlausibleScale(scale)) return { realFeetPerPaperInch: scale, label: m[0].trim() }
+    }
+  }
+
+  if (/scale/i.test(text)) {
+    const r = text.match(SCALE_RATIO_RE)
+    if (r) {
+      const ratio = Number(r[1])
+      // A drafted ratio is unit-per-same-unit (1 inch of paper : 50 inches real) — divide
+      // by 12 to land in the same real-feet-per-paper-inch terms as the other two forms.
+      const scale = ratio / 12
+      if (isPlausibleScale(scale)) return { realFeetPerPaperInch: scale, label: `1:${ratio}` }
+    }
+  }
+
+  return null
+}
+
 // A worker-thread failure doesn't reliably reject tesseract.js's promise — it can just
 // hang. Without a hard timeout, "Scanning the plan..." would stay on screen forever.
 // The ceiling is generous because the scan runs in the background behind a visible
@@ -224,6 +303,7 @@ export interface ScanResult {
   dimensions: DetectedDimension[]
   scheduleEntries: ScheduleEntry[]
   rooms: DetectedRoom[]
+  scaleNote: DetectedScale | null
 }
 
 export function scanPlan(imageUrl: string): Promise<ScanResult> {
@@ -327,10 +407,23 @@ export function parsePlanLines(lines: OcrLine[]): ScanResult {
   const pairLabels: { a: number; b: number; text: string; bbox: { x0: number; y0: number; x1: number; y1: number } }[] = []
   let dimCounter = 0
   let schedCounter = 0
+  // First one found wins — a scale note is normally printed once (occasionally twice,
+  // main sheet plus title block, always agreeing), so there's no ambiguity to resolve.
+  let scaleNote: DetectedScale | null = null
 
   for (const line of lines) {
     const text = line.text.trim()
     if (!text) continue
+
+    // Scale notes are checked before anything else: "1/4" = 1'-0"" would otherwise get
+    // read as a (implausibly short, and so discarded) dimension label instead.
+    if (!scaleNote) {
+      const parsed = parseScaleLine(text)
+      if (parsed) {
+        scaleNote = { ...parsed, sourceText: text }
+        continue
+      }
+    }
 
     // Schedule rows are checked first and, if matched, don't also get read as a
     // plain dimension label (a schedule size shouldn't show up as a calibration
@@ -389,7 +482,7 @@ export function parsePlanLines(lines: OcrLine[]): ScanResult {
     }
   })
 
-  return { dimensions: dedupeDimensions(dimensions), scheduleEntries: dedupeSchedule(scheduleEntries), rooms }
+  return { dimensions: dedupeDimensions(dimensions), scheduleEntries: dedupeSchedule(scheduleEntries), rooms, scaleNote }
 }
 
 // The same label is frequently read twice (once per near-duplicate OCR line); collapse
