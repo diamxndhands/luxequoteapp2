@@ -1,52 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import FloorPlanCanvas, { CanvasMode, CanvasTrace } from './components/FloorPlanCanvas'
-import DetectedDimensionsBanner from './components/DetectedDimensionsBanner'
-import ScheduleBanner from './components/ScheduleBanner'
-import DetectedRoomsBanner from './components/DetectedRoomsBanner'
+import WizardStepper from './components/wizard/WizardStepper'
+import WizardSidebar from './components/wizard/WizardSidebar'
+import { WIZARD_STEPS, WizardStep, stepIndex } from './components/wizard/steps'
+import UploadStep from './components/wizard/steps/UploadStep'
+import RoomsStep from './components/wizard/steps/RoomsStep'
+import ServicesStep from './components/wizard/steps/ServicesStep'
+import PricingStep from './components/wizard/steps/PricingStep'
+import QuoteStep from './components/wizard/steps/QuoteStep'
 import { DetectedDimension, DetectedRoom, ScheduleEntry, scanPlan } from './lib/ocr'
-import { getNextRoomColor, getRoomColor } from './lib/roomColors'
-import { ScaleCalibration } from './types/project'
-import { SERVICE_CATALOG_SEED } from './lib/serviceCatalogSeed'
+import { getRoomColor, getNextRoomColor } from './lib/roomColors'
+import { fileToDataUrl, loadProject, newProject, saveProject } from './lib/projectStore'
+import { Room } from './types/project'
+import { MaterialsSuppliedBy } from './types/service'
 import './styles.css'
 
-// Proof-of-port harness: upload -> calibrate -> OCR (dimensions / door-window schedule /
-// room detection) -> trace or accept rooms -> see them listed. This exercises every
-// piece ported so far (FloorPlanCanvas, lib/ocr, lib/measurement, lib/roomColors)
-// end-to-end against the new schema's Room/ScaleCalibration shapes.
-//
-// This is NOT the wizard — there's no service picker, no pricing review, no PDF
-// generation UI here. Room/service tagging (Upload -> Rooms -> Services -> Pricing ->
-// Quote) is the next build-order step, deferred on purpose so this step stays scoped to
-// "does the ported plumbing actually work."
-
-interface HarnessRoom {
-  id: string
-  label: string
-  source: 'traced' | 'ocr_detected'
-  points: number[]
-  areaSqFt?: number
-  perimeterFt?: number
-}
-
+// The wizard shell: persistent stepper, running summary sidebar, autosave. Upload and
+// Rooms are fully wired (the canvas/OCR mechanics ported in the last step); Services,
+// Pricing, and Quote are placeholders per the spec's own guidance not to polish a step
+// before what's inside it is real — see each step component for what's still missing.
 export default function App() {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [scale, setScale] = useState<ScaleCalibration | null>(null)
-  const [rooms, setRooms] = useState<HarnessRoom[]>([])
+  const [project, setProject] = useState(() => loadProject() ?? newProject())
+  const [step, setStep] = useState<WizardStep>('upload')
+  const [furthest, setFurthest] = useState<WizardStep>('upload')
   const [mode, setMode] = useState<CanvasMode>('none')
+  const [calibrationHint, setCalibrationHint] = useState<number | null>(null)
+
   const [detectedDimensions, setDetectedDimensions] = useState<DetectedDimension[]>([])
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([])
   const [detectedRooms, setDetectedRooms] = useState<DetectedRoom[]>([])
   const [ocrStatus, setOcrStatus] = useState<'idle' | 'scanning' | 'done' | 'error'>('idle')
-  const [calibrationHint, setCalibrationHint] = useState<number | null>(null)
-  const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // Autosave on every change to the project — a jobsite interruption shouldn't lose work.
   useEffect(() => {
-    if (!imageUrl) return
+    saveProject(project)
+  }, [project])
+
+  // Re-scan a restored plan on load, same as the prototype — OCR results aren't
+  // themselves persisted (cheap to recompute, avoids re-associating stale bounding
+  // boxes with anything).
+  useEffect(() => {
+    if (project.floor_plan_image_url) scanForOcr(project.floor_plan_image_url)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function scanForOcr(url: string) {
     setDetectedDimensions([])
     setScheduleEntries([])
     setDetectedRooms([])
     setOcrStatus('scanning')
-    scanPlan(imageUrl)
+    scanPlan(url)
       .then(result => {
         setDetectedDimensions(result.dimensions)
         setScheduleEntries(result.scheduleEntries)
@@ -54,121 +57,171 @@ export default function App() {
         setOcrStatus('done')
       })
       .catch(() => setOcrStatus('error'))
-  }, [imageUrl])
-
-  async function handleUpload(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const reader = new FileReader()
-    reader.onload = () => {
-      setImageUrl(reader.result as string)
-      setScale(null)
-      setRooms([])
-      setMode('none')
-    }
-    reader.readAsDataURL(file)
   }
 
-  const roomIds = rooms.map(r => r.id)
-  const roomTraces: CanvasTrace[] = rooms.map(r => ({ id: r.id, kind: 'room', points: r.points, color: getRoomColor(roomIds, r.id) }))
+  async function handleUpload(file: File) {
+    const url = await fileToDataUrl(file)
+    // A new plan invalidates everything measured against the old one.
+    setProject(p => ({ ...p, floor_plan_image_url: url, scale: undefined, rooms: [], updated_at: Date.now() }))
+    setMode('none')
+    setCalibrationHint(null)
+    scanForOcr(url)
+  }
+
+  function updateRooms(fn: (rooms: Room[]) => Room[]) {
+    setProject(p => ({ ...p, rooms: fn(p.rooms), updated_at: Date.now() }))
+  }
 
   function handleRoomDrawn(points: number[], name: string, areaSqFt: number, perimeterFt: number) {
-    setRooms(prev => [...prev, { id: crypto.randomUUID(), label: name, source: 'traced', points, areaSqFt, perimeterFt }])
+    updateRooms(rooms => [
+      ...rooms,
+      { id: crypto.randomUUID(), label: name, source: 'traced', floor_plan_polygon: points, area_sqft: areaSqFt, perimeter_ft: perimeterFt, tagged_services: [] }
+    ])
     setMode('none')
   }
 
   function acceptDetectedRooms(accepted: DetectedRoom[]) {
     // Printed-label rooms have real feet directly from the label (no calibration
-    // needed) but no polygon on the plan — there's nothing to trace, so these get an
-    // empty points array and just carry their measured area/perimeter.
-    setRooms(prev => [
-      ...prev,
-      ...accepted.map(r => ({ id: crypto.randomUUID(), label: r.name, source: 'ocr_detected' as const, points: [], areaSqFt: r.areaSqFt, perimeterFt: r.perimeterFt }))
+    // needed) but no polygon on the plan — nothing to trace, so these carry an empty
+    // outline and just their measured area/perimeter.
+    updateRooms(rooms => [
+      ...rooms,
+      ...accepted.map(r => ({
+        id: crypto.randomUUID(),
+        label: r.name,
+        source: 'ocr_detected' as const,
+        floor_plan_polygon: [],
+        area_sqft: r.areaSqFt,
+        perimeter_ft: r.perimeterFt,
+        tagged_services: []
+      }))
     ])
-    setDetectedRooms(detectedRooms.filter(r => !accepted.includes(r)))
+    setDetectedRooms(rooms => rooms.filter(r => !accepted.includes(r)))
   }
 
   function handleRoomEdited(roomId: string, points: number[]) {
-    setRooms(prev => prev.map(r => (r.id === roomId ? { ...r, points } : r)))
+    updateRooms(rooms => rooms.map(r => (r.id === roomId ? { ...r, floor_plan_polygon: points } : r)))
   }
+
+  function removeRoom(roomId: string) {
+    updateRooms(rooms => rooms.filter(r => r.id !== roomId))
+  }
+
+  function setMaterialsSuppliedBy(value: MaterialsSuppliedBy) {
+    setProject(p => ({ ...p, materials_supplied_by: value, updated_at: Date.now() }))
+  }
+
+  // "Next" unlocks once the minimum for that step is met; going backward is always
+  // allowed. Services/Pricing have no real interaction to gate on yet (see their
+  // components) so they're left open rather than trapping the wizard on an
+  // unbuildable requirement.
+  const canAdvance: Record<WizardStep, boolean> = {
+    upload: !!project.floor_plan_image_url,
+    rooms: project.rooms.length > 0,
+    services: true,
+    pricing: true,
+    quote: true
+  }
+
+  function goToStep(next: WizardStep) {
+    setStep(next)
+    if (stepIndex(next) > stepIndex(furthest)) setFurthest(next)
+    setMode('none')
+  }
+
+  function goNext() {
+    const idx = stepIndex(step)
+    if (idx < WIZARD_STEPS.length - 1) goToStep(WIZARD_STEPS[idx + 1].id)
+  }
+
+  function goBack() {
+    const idx = stepIndex(step)
+    if (idx > 0) goToStep(WIZARD_STEPS[idx - 1].id)
+  }
+
+  const roomIds = project.rooms.map(r => r.id)
+  const roomTraces: CanvasTrace[] = project.rooms
+    .filter(r => r.floor_plan_polygon.length > 0)
+    .map(r => ({ id: r.id, kind: 'room', points: r.floor_plan_polygon, color: getRoomColor(roomIds, r.id) }))
+
+  const showCanvas = step === 'upload' || step === 'rooms'
 
   return (
     <div className="appShell">
-      <input type="file" accept="image/*" ref={fileInputRef} onChange={handleUpload} style={{ display: 'none' }} />
-      <div style={{ padding: '8px 12px', background: '#fff', borderBottom: '1px solid #dedcd4', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-        <button onClick={() => fileInputRef.current?.click()}>Upload plan</button>
-        <button disabled={!imageUrl} onClick={() => setMode('calibrate')}>
-          Calibrate
-        </button>
-        <button disabled={!scale} onClick={() => setMode('room')}>
-          Trace room
-        </button>
-        <span style={{ fontSize: 12, color: '#96948a' }}>
-          {scale ? `Scale set (${scale.realLength} ${scale.unit})` : 'No scale yet'} · {rooms.length} room{rooms.length === 1 ? '' : 's'} ·{' '}
-          {SERVICE_CATALOG_SEED.length} seeded services
-        </span>
-      </div>
+      <WizardStepper current={step} furthest={furthest} onSelect={goToStep} />
 
-      <div className="canvasStage">
-        <FloorPlanCanvas
-          imageUrl={imageUrl}
-          mode={mode}
-          activeColor={mode === 'room' ? getNextRoomColor(rooms.length) : null}
-          scale={scale}
-          traces={roomTraces}
-          detectedDimensions={detectedDimensions}
-          calibrationHint={calibrationHint}
-          onCalibrationConfirmed={next => {
-            setScale(next)
-            setCalibrationHint(null)
-            setMode('none')
-          }}
-          onTraceDrawn={() => {
-            // No non-room draw modes are exposed by this harness yet — service tagging
-            // (which is what would drive point/span/line/polygon modes) is next-phase.
-          }}
-          onRoomDrawn={handleRoomDrawn}
-          onTraceEdited={handleRoomEdited}
-          onCancel={() => {
-            setMode('none')
-            setCalibrationHint(null)
-          }}
-        />
+      <div className="wizardBody">
+        <div className="canvasStage">
+          {showCanvas && (
+            <FloorPlanCanvas
+              imageUrl={project.floor_plan_image_url ?? null}
+              mode={mode}
+              activeColor={mode === 'room' ? getNextRoomColor(project.rooms.length) : null}
+              scale={project.scale ?? null}
+              traces={roomTraces}
+              detectedDimensions={step === 'rooms' ? detectedDimensions : []}
+              calibrationHint={calibrationHint}
+              onCalibrationConfirmed={next => {
+                setProject(p => ({ ...p, scale: next, updated_at: Date.now() }))
+                setCalibrationHint(null)
+                setMode('none')
+              }}
+              onTraceDrawn={() => {
+                // No non-room draw modes are reachable yet — service tagging (Services
+                // step) is what will drive point/span/line/polygon modes.
+              }}
+              onRoomDrawn={handleRoomDrawn}
+              onTraceEdited={handleRoomEdited}
+              onCancel={() => {
+                setMode('none')
+                setCalibrationHint(null)
+              }}
+            />
+          )}
 
-        {!imageUrl && (
-          <div className="emptyState">
-            <div className="emptyStateIcon">🗺️</div>
-            <div className="emptyStateTitle">Upload a floor plan to begin</div>
-            <button className="primary" onClick={() => fileInputRef.current?.click()}>
-              Choose a plan
-            </button>
-          </div>
-        )}
+          {step === 'upload' && <UploadStep imageUrl={project.floor_plan_image_url ?? null} ocrStatus={ocrStatus} onUpload={handleUpload} />}
 
-        <DetectedDimensionsBanner
-          status={imageUrl ? ocrStatus : 'idle'}
-          dimensions={detectedDimensions}
-          onUse={d => {
-            setCalibrationHint(d.feet)
-            setMode('calibrate')
-          }}
-        />
-        <ScheduleBanner entries={scheduleEntries} onAccept={() => {}} />
-        <DetectedRoomsBanner rooms={detectedRooms} onAccept={acceptDetectedRooms} onDismiss={() => setDetectedRooms([])} />
-      </div>
+          {step === 'rooms' && (
+            <RoomsStep
+              scale={project.scale ?? null}
+              mode={mode}
+              onCalibrateClick={() => {
+                setCalibrationHint(null)
+                setMode('calibrate')
+              }}
+              onTraceRoomClick={() => setMode('room')}
+              ocrStatus={ocrStatus}
+              detectedDimensions={detectedDimensions}
+              onUseDimension={d => {
+                setCalibrationHint(d.feet)
+                setMode('calibrate')
+              }}
+              detectedRooms={detectedRooms}
+              onAcceptDetectedRooms={acceptDetectedRooms}
+              onDismissDetectedRooms={() => setDetectedRooms([])}
+              rooms={project.rooms}
+              onRemoveRoom={removeRoom}
+            />
+          )}
 
-      {rooms.length > 0 && (
-        <div style={{ padding: 12, background: '#fff', borderTop: '1px solid #dedcd4', fontSize: 12, maxHeight: 140, overflowY: 'auto' }}>
-          {rooms.map(r => (
-            <div key={r.id} style={{ display: 'flex', gap: 10 }}>
-              <strong>{r.label}</strong>
-              <span style={{ color: '#96948a' }}>
-                {r.source} · {r.areaSqFt ?? '—'} sq ft · {r.perimeterFt ?? '—'} ft perimeter
-              </span>
-            </div>
-          ))}
+          {step === 'services' && <ServicesStep rooms={project.rooms} />}
+          {step === 'pricing' && <PricingStep materialsSuppliedBy={project.materials_supplied_by} onChange={setMaterialsSuppliedBy} />}
+          {step === 'quote' && <QuoteStep />}
         </div>
-      )}
+
+        <WizardSidebar project={project} />
+      </div>
+
+      <div className="wizardNav">
+        <button onClick={goBack} disabled={step === 'upload'}>
+          Back
+        </button>
+        {step !== 'quote' && (
+          <button className="primary" onClick={goNext} disabled={!canAdvance[step]}>
+            Next
+          </button>
+        )}
+      </div>
     </div>
   )
 }
