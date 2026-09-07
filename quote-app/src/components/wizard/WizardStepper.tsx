@@ -7,12 +7,15 @@ interface Props {
   // unlocking on the minimum being met is the only way forward, per the spec ("going
   // backward is always allowed" is the one-directional guarantee, not free navigation).
   furthest: WizardStep
+  onOpenSettings: () => void
 }
 
 // Persistent progress bar: always visible, current step highlighted, completed steps
 // checked off. Doubles as backward navigation — tapping an already-reached step jumps
-// straight to it.
-export default function WizardStepper({ current, furthest, onSelect }: Props & { onSelect: (step: WizardStep) => void }) {
+// straight to it. The settings gear lives here rather than as a sixth step: it's
+// account-level config (letterhead, tax rate, terms text), not a stage of quoting one
+// project, so it sits outside the Upload-through-Quote flow entirely.
+export default function WizardStepper({ current, furthest, onSelect, onOpenSettings }: Props & { onSelect: (step: WizardStep) => void }) {
   const currentIdx = stepIndex(current)
   const furthestIdx = stepIndex(furthest)
 
@@ -31,6 +34,9 @@ export default function WizardStepper({ current, furthest, onSelect }: Props & {
           {i < WIZARD_STEPS.length - 1 && <span className="stepConnector" />}
         </div>
       ))}
+      <button className="settingsGearBtn" onClick={onOpenSettings} title="Business settings">
+        ⚙ Settings
+      </button>
     </div>
   )
 }

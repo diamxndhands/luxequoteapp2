@@ -13,7 +13,7 @@ interface Props {
   profile: BusinessProfile
   lastQuote: Quote | null
   onUpdateClient: (patch: { client_name?: string; address?: string }) => void
-  onUpdateProfile: (patch: Partial<BusinessProfile>) => void
+  onOpenSettings: () => void
   onGenerated: (quote: Quote) => void
 }
 
@@ -22,7 +22,7 @@ interface Props {
 // port step, they just had nothing real to render until now), and downloads the file.
 // The on-screen preview reads the exact same QuoteDocument the PDF does, so what's
 // shown here is never out of sync with what actually downloads.
-export default function QuoteStep({ project, catalog, profile, lastQuote, onUpdateClient, onUpdateProfile, onGenerated }: Props) {
+export default function QuoteStep({ project, catalog, profile, lastQuote, onUpdateClient, onOpenSettings, onGenerated }: Props) {
   const [notes, setNotes] = useState(lastQuote?.notes ?? '')
   const [title, setTitle] = useState(lastQuote?.title ?? '')
   const [includeDeposit, setIncludeDeposit] = useState((lastQuote?.deposit_pct ?? profile.depositPct) > 0)
@@ -107,17 +107,12 @@ export default function QuoteStep({ project, catalog, profile, lastQuote, onUpda
             </p>
           </div>
 
-          <details className="businessInfoDetails">
-            <summary>Business info &amp; tax rate</summary>
-            <div className="configField">
-              <label className="label">Business name</label>
-              <input type="text" value={profile.name} onChange={e => onUpdateProfile({ name: e.target.value })} />
-            </div>
-            <div className="configField">
-              <label className="label">{profile.taxLabel} rate (%)</label>
-              <input type="number" min="0" step="any" value={profile.taxRate} onChange={e => onUpdateProfile({ taxRate: Number(e.target.value) })} />
-            </div>
-          </details>
+          <div className="businessInfoDetails">
+            <p className="meta">
+              Quoting as <strong>{profile.name}</strong> · {profile.taxLabel} {profile.taxRate}%
+            </p>
+            <button onClick={onOpenSettings}>Edit business settings</button>
+          </div>
         </div>
 
         <div className="quotePreview">

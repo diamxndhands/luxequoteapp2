@@ -8,6 +8,7 @@ import RoomsStep from './components/wizard/steps/RoomsStep'
 import ServicesStep from './components/wizard/steps/ServicesStep'
 import PricingStep from './components/wizard/steps/PricingStep'
 import QuoteStep from './components/wizard/steps/QuoteStep'
+import SettingsScreen from './components/settings/SettingsScreen'
 import { DetectedDimension, DetectedRoom, ScheduleEntry, scanPlan } from './lib/ocr'
 import { getRoomColor, getNextRoomColor } from './lib/roomColors'
 import { fileToDataUrl, loadProject, newProject, saveProject } from './lib/projectStore'
@@ -30,6 +31,9 @@ export default function App() {
   const [lastQuote, setLastQuote] = useState<Quote | null>(() => loadLastQuote())
   const [step, setStep] = useState<WizardStep>('upload')
   const [furthest, setFurthest] = useState<WizardStep>('upload')
+  // Settings is a sibling screen to the wizard, not a step inside it — see
+  // WizardStepper's comment on why the gear lives outside the stepper.
+  const [showSettings, setShowSettings] = useState(false)
   const [mode, setMode] = useState<CanvasMode>('none')
   const [calibrationHint, setCalibrationHint] = useState<number | null>(null)
 
@@ -236,9 +240,17 @@ export default function App() {
 
   const showCanvas = step === 'upload' || step === 'rooms'
 
+  if (showSettings) {
+    return (
+      <div className="appShell">
+        <SettingsScreen profile={businessProfile} onChange={updateBusinessProfile} onClose={() => setShowSettings(false)} />
+      </div>
+    )
+  }
+
   return (
     <div className="appShell">
-      <WizardStepper current={step} furthest={furthest} onSelect={goToStep} />
+      <WizardStepper current={step} furthest={furthest} onSelect={goToStep} onOpenSettings={() => setShowSettings(true)} />
 
       <div className="wizardBody">
         <div className="canvasStage">
@@ -321,7 +333,7 @@ export default function App() {
               profile={businessProfile}
               lastQuote={lastQuote}
               onUpdateClient={updateClient}
-              onUpdateProfile={updateBusinessProfile}
+              onOpenSettings={() => setShowSettings(true)}
               onGenerated={handleQuoteGenerated}
             />
           )}
