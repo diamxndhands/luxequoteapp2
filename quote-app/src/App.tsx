@@ -12,16 +12,22 @@ import { DetectedDimension, DetectedRoom, ScheduleEntry, scanPlan } from './lib/
 import { getRoomColor, getNextRoomColor } from './lib/roomColors'
 import { fileToDataUrl, loadProject, newProject, saveProject } from './lib/projectStore'
 import { loadCatalog, saveCatalog } from './lib/catalogStore'
+import { loadBusinessProfile, saveBusinessProfile } from './lib/businessProfileStore'
+import { loadLastQuote, saveLastQuote } from './lib/quoteStore'
 import { Room, TaggedService } from './types/project'
 import { MaterialsSuppliedBy, Service } from './types/service'
+import { BusinessProfile } from './types/settings'
+import { Quote } from './types/quote'
 import './styles.css'
 
-// The wizard shell: persistent stepper, running summary sidebar, autosave. Upload,
-// Rooms, Services, and Pricing are fully wired; Quote is still a placeholder — see
-// QuoteStep for what's left.
+// The wizard shell: persistent stepper, running summary sidebar, autosave. All five
+// steps are fully wired now — Quote rolls the priced project into a Quote and renders
+// it through the ported PDF pipeline.
 export default function App() {
   const [project, setProject] = useState(() => loadProject() ?? newProject())
   const [catalog, setCatalog] = useState<Service[]>(() => loadCatalog())
+  const [businessProfile, setBusinessProfile] = useState<BusinessProfile>(() => loadBusinessProfile())
+  const [lastQuote, setLastQuote] = useState<Quote | null>(() => loadLastQuote())
   const [step, setStep] = useState<WizardStep>('upload')
   const [furthest, setFurthest] = useState<WizardStep>('upload')
   const [mode, setMode] = useState<CanvasMode>('none')
@@ -42,6 +48,10 @@ export default function App() {
   useEffect(() => {
     saveCatalog(catalog)
   }, [catalog])
+
+  useEffect(() => {
+    saveBusinessProfile(businessProfile)
+  }, [businessProfile])
 
   // Re-scan a restored plan on load, same as the prototype — OCR results aren't
   // themselves persisted (cheap to recompute, avoids re-associating stale bounding
@@ -176,6 +186,20 @@ export default function App() {
     }))
   }
 
+  function updateClient(patch: { client_name?: string; address?: string }) {
+    setProject(p => ({ ...p, ...patch, updated_at: Date.now() }))
+  }
+
+  function updateBusinessProfile(patch: Partial<BusinessProfile>) {
+    setBusinessProfile(p => ({ ...p, ...patch }))
+  }
+
+  function handleQuoteGenerated(quote: Quote) {
+    setLastQuote(quote)
+    saveLastQuote(quote)
+    setProject(p => ({ ...p, status: 'quoted', updated_at: Date.now() }))
+  }
+
   // "Next" unlocks once the minimum for that step is met; going backward is always
   // allowed. Pricing has no real interaction to gate on yet beyond the materials
   // toggle, so it's left open rather than trapping the wizard on an unbuildable
@@ -290,7 +314,17 @@ export default function App() {
               onUpdateProjectServicePricing={updateProjectServicePricing}
             />
           )}
-          {step === 'quote' && <QuoteStep />}
+          {step === 'quote' && (
+            <QuoteStep
+              project={project}
+              catalog={catalog}
+              profile={businessProfile}
+              lastQuote={lastQuote}
+              onUpdateClient={updateClient}
+              onUpdateProfile={updateBusinessProfile}
+              onGenerated={handleQuoteGenerated}
+            />
+          )}
         </div>
 
         <WizardSidebar project={project} />

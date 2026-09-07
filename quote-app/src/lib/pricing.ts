@@ -1,7 +1,7 @@
 import { MaterialsSuppliedBy, Rate, Service, ServiceModifier } from '../types/service'
 import { AdHocItem, SelectedModifier, TaggedService } from '../types/project'
 
-function round2(n: number): number {
+export function round2(n: number): number {
   return Math.round(n * 100) / 100
 }
 

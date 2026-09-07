@@ -41,7 +41,7 @@ export interface QuoteDocument {
 }
 
 export function currency(n: number): string {
-  return n.toLocaleString(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 2, minimumFractionDigits: 2 })
+  return n.toLocaleString(undefined, { style: 'currency', currency: 'CAD', maximumFractionDigits: 2, minimumFractionDigits: 2 })
 }
 
 export function longDate(ts: number): string {
@@ -80,7 +80,7 @@ export function buildQuoteDocument(quote: Quote, profile: BusinessProfile): Quot
   const taxAmount = quote.gst
   const taxRate = quote.subtotal > 0 ? Math.round((quote.gst / quote.subtotal) * 1000) / 10 : profile.taxRate
   const total = quote.total
-  const depositPct = profile.depositPct
+  const depositPct = quote.deposit_pct ?? profile.depositPct
   const depositAmount = Math.round(total * (depositPct / 100) * 100) / 100
 
   return {
