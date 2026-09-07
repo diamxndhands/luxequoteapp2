@@ -1,0 +1,11 @@
+{
+  "name": "luxequoteapp2",
+  "compatibility_date": "2026-09-01",
+  "build": {
+    "command": "npm install && npm run build",
+    "cwd": "quote-app"
+  },
+  "assets": {
+    "directory": "quote-app/dist"
+  }
+}
