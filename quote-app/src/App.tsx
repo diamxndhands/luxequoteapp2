@@ -11,7 +11,7 @@ import QuoteStep from './components/wizard/steps/QuoteStep'
 import SettingsScreen from './components/settings/SettingsScreen'
 import { DetectedDimension, DetectedRoom, ScheduleEntry, scanPlan } from './lib/ocr'
 import { getRoomColor, getNextRoomColor } from './lib/roomColors'
-import { fileToDataUrl, loadProject, newProject, saveProject } from './lib/projectStore'
+import { loadProject, newProject, saveProject } from './lib/projectStore'
 import { loadCatalog, saveCatalog } from './lib/catalogStore'
 import { loadBusinessProfile, saveBusinessProfile } from './lib/businessProfileStore'
 import { loadLastQuote, saveLastQuote } from './lib/quoteStore'
@@ -80,13 +80,15 @@ export default function App() {
       .catch(() => setOcrStatus('error'))
   }
 
-  async function handleUpload(file: File) {
-    const url = await fileToDataUrl(file)
+  // UploadStep already resolved whatever the user picked (photo or PDF, page chosen if
+  // it had more than one) down to a single raster image — nothing downstream of this
+  // needs to know which it came from.
+  function handleUpload(imageDataUrl: string) {
     // A new plan invalidates everything measured against the old one.
-    setProject(p => ({ ...p, floor_plan_image_url: url, scale: undefined, rooms: [], updated_at: Date.now() }))
+    setProject(p => ({ ...p, floor_plan_image_url: imageDataUrl, scale: undefined, rooms: [], updated_at: Date.now() }))
     setMode('none')
     setCalibrationHint(null)
-    scanForOcr(url)
+    scanForOcr(imageDataUrl)
   }
 
   function updateRooms(fn: (rooms: Room[]) => Room[]) {
