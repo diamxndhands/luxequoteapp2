@@ -90,12 +90,16 @@ const SINGLE_RE = new RegExp(FEET_INCHES)
 // contractor's own plans) — so both orders are matched; the underlying scale is
 // identical either way, only which side comes first differs.
 const PAPER_INCH_SIDE = String.raw`(?:(\d{1,2})\s*\/\s*(\d{1,2})|(\d{1,2}(?:\.\d+)?))\s*${INCH_MARK}?`
-// The real-world side of a scale note is shaped exactly like any other dimension label
-// (a wall length, a room width) — reuse FEET_INCHES rather than a hand-rolled copy that
-// requires an actual foot mark. A first version of this did exactly that, and would have
-// silently missed a scale note on almost every real scan for the same reason a stricter
-// FEET_INCHES once did: OCR drops the foot mark far more often than not.
-const REAL_FEET_SIDE = FEET_INCHES
+// The real-world side of a scale note is shaped like any other dimension label (a wall
+// length, a room width), so this started as a direct reuse of FEET_INCHES — but a real
+// scan (a schedule row reading "1'=1/8"") came back from OCR as the bare digit "1"
+// immediately against the "=", with no foot mark AND no hyphen left in its place either;
+// FEET_INCHES requires one or the other and rejected it. FEET_INCHES exists to keep a
+// bare number from being misread as a dimension when nothing else marks it as one — but
+// here the literal "=" already does that job (an ordinary dimension label never contains
+// one), so unlike a standalone dimension, a scale note's feet side is safe to read with
+// no separator at all.
+const REAL_FEET_SIDE = String.raw`(\d{1,3}(?:\.\d+)?)\s*(?:${FOOT_MARK}(?!${FOOT_MARK})\s*-?\s*|-\s*)?((?:0?\d|1[01])(?:\.\d+)?)?\s*${INCH_MARK}?`
 const SCALE_INCH_EQ_FEET_RE = new RegExp(`${PAPER_INCH_SIDE}\\s*=\\s*${REAL_FEET_SIDE}`)
 const SCALE_FEET_EQ_INCH_RE = new RegExp(`${REAL_FEET_SIDE}\\s*=\\s*${PAPER_INCH_SIDE}`)
 // A bare ratio (1:50, 1:100 — common on metric-drafted sets) only counts next to the
@@ -247,25 +251,39 @@ function parseScheduleLine(text: string, nextId: () => string): ScheduleEntry | 
 }
 
 function parseScaleLine(text: string): { realFeetPerPaperInch: number; label: string } | null {
-  let m = text.match(SCALE_INCH_EQ_FEET_RE)
-  if (m) {
-    const paperIn = paperInches(m[1], m[2], m[3])
-    const feet = m[4] !== undefined ? Number(m[4]) + (m[5] ? Number(m[5]) / 12 : 0) : undefined
+  // Both orders are tried against every line, and a string like "1=1/8"" can honestly
+  // match either shape: PAPER_INCH_SIDE alone matches the bare "1" as a whole paper inch,
+  // so "inch-then-feet" matches just "1=1" (stopping before "/8""), while "feet-then-inch"
+  // matches the full "1=1/8"" with the fraction. Taking whichever regex happened to run
+  // first would silently pick the truncated, wrong reading here — so both are tried and
+  // whichever one actually consumed more of the string wins, since the correct reading of
+  // an ambiguous scale note is the one that accounts for more of what was printed, not an
+  // accident of which pattern this function happens to check first.
+  let best: { scale: number; label: string; matchedLength: number } | null = null
+
+  const inchEqFeet = text.match(SCALE_INCH_EQ_FEET_RE)
+  if (inchEqFeet) {
+    const paperIn = paperInches(inchEqFeet[1], inchEqFeet[2], inchEqFeet[3])
+    const feet = inchEqFeet[4] !== undefined ? Number(inchEqFeet[4]) + (inchEqFeet[5] ? Number(inchEqFeet[5]) / 12 : 0) : undefined
     if (paperIn && feet) {
       const scale = feet / paperIn
-      if (isPlausibleScale(scale)) return { realFeetPerPaperInch: scale, label: m[0].trim() }
+      if (isPlausibleScale(scale)) best = { scale, label: inchEqFeet[0].trim(), matchedLength: inchEqFeet[0].length }
     }
   }
 
-  m = text.match(SCALE_FEET_EQ_INCH_RE)
-  if (m) {
-    const feet = Number(m[1]) + (m[2] ? Number(m[2]) / 12 : 0)
-    const paperIn = paperInches(m[3], m[4], m[5])
+  const feetEqInch = text.match(SCALE_FEET_EQ_INCH_RE)
+  if (feetEqInch) {
+    const feet = Number(feetEqInch[1]) + (feetEqInch[2] ? Number(feetEqInch[2]) / 12 : 0)
+    const paperIn = paperInches(feetEqInch[3], feetEqInch[4], feetEqInch[5])
     if (paperIn && feet) {
       const scale = feet / paperIn
-      if (isPlausibleScale(scale)) return { realFeetPerPaperInch: scale, label: m[0].trim() }
+      if (isPlausibleScale(scale) && (!best || feetEqInch[0].length > best.matchedLength)) {
+        best = { scale, label: feetEqInch[0].trim(), matchedLength: feetEqInch[0].length }
+      }
     }
   }
+
+  if (best) return { realFeetPerPaperInch: best.scale, label: best.label }
 
   if (/scale/i.test(text)) {
     const r = text.match(SCALE_RATIO_RE)
